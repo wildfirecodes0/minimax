@@ -1,6 +1,7 @@
 const { Markup } = require('telegraf');
 const supabase = require('../supabase');
 const { sendOrEditUI } = require('../utils/messageManager');
+const { BOT_USERNAME } = require('../config');
 
 const PAGE_SIZE = 10;
 
@@ -258,6 +259,30 @@ async function catalogRouter(ctx) {
             { parse_mode: 'HTML' }
           )
           .catch(() => {});
+      }
+
+      // Announce the sale on the public channel (same env var used for
+      // deposit announcements — set PUBLIC_CHANNEL_ID in your .env / Render
+      // environment tab, e.g. @MiniMaxStoreShop or a numeric channel ID).
+      const purchaseChannelId = process.env.PUBLIC_CHANNEL_ID;
+      if (purchaseChannelId) {
+        const buyerName = ctx.from.first_name || 'A user';
+        const boughtLabel = item.file_name || item.name;
+
+        await ctx.telegram
+          .sendMessage(
+            purchaseChannelId,
+            `💻 <b>New Product Purchase by ${buyerName}</b>\n\n` +
+            `🛍️ <b>Bought:</b> ${boughtLabel}\n\n` +
+            `💸 <b>Cost:</b> ${price} RP💎\n\n` +
+            `🤩 <i>Get Your Dream APIs & Bots From Here</i>\n` +
+            `➡️ @${BOT_USERNAME}`,
+            {
+              parse_mode: 'HTML',
+              ...Markup.inlineKeyboard([[Markup.button.url('🤖 Get Bots & APIs Now', `https://t.me/${BOT_USERNAME}`)]]),
+            }
+          )
+          .catch((err) => console.error('Purchase channel announcement error:', err.message));
       }
 
       return;

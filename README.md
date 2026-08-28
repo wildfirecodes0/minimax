@@ -87,7 +87,7 @@ Users tap "🚀 Pay" (Razorpay/UPI link in `src/config.js` → `PAYMENT_LINK`), 
 
 This bot uses **long polling** (`bot.launch()`), so it needs to run continuously.
 
-- **Render** — create it as a **Background Worker** (NOT "Web Service" — this bot doesn't listen on any HTTP port and will be killed by Render's port-scan timeout if deployed as a Web Service)
+- **Render** — a tiny health-check HTTP server (`src/bot.js`) now listens on `process.env.PORT`, so the bot deploys fine even as a free-tier **Web Service** without hitting Render's port-scan timeout. A **Background Worker** (paid plan) still works too and is the more "correct" service type for a polling bot, but is no longer required to avoid deploy failures.
 - **Railway** — auto-detects Node.js, just set env vars and deploy
 - **VPS + PM2** — `pm2 start src/bot.js --name minimax-bot`
 

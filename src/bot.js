@@ -1,5 +1,6 @@
 const { Telegraf } = require('telegraf');
 const https = require('https');
+const http = require('http');
 require('dotenv').config();
 
 const supabase = require('./supabase');
@@ -237,6 +238,24 @@ bot.on(['photo', 'video', 'animation'], async (ctx, next) => {
 bot.catch((err, ctx) => {
   console.error(`Unhandled error for update type "${ctx.updateType}":`, err.message);
 });
+
+// ---------------- Health-check HTTP server ----------------
+// This bot only talks to Telegram via long polling and normally doesn't need
+// an HTTP port at all. BUT if it's deployed on Render as a "Web Service"
+// (the only free-tier option), Render requires SOMETHING listening on
+// process.env.PORT within ~60s of deploy — otherwise it repeatedly kills the
+// instance with a port-scan timeout, which looks like "Deploy failed" even
+// though the bot code itself is fine. Binding a tiny server here fixes that
+// regardless of which Render service type is chosen.
+const PORT = process.env.PORT || 3000;
+http
+  .createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Mini Max Seller Bot is running.');
+  })
+  .listen(PORT, () => {
+    console.log(`🌐 Health-check server listening on port ${PORT}`);
+  });
 
 bot.launch();
 console.log('🚀 Mini Max Seller Bot is running...');
