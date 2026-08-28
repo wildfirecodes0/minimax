@@ -146,16 +146,22 @@ async function showDetailHandler(type, code, page, ctx) {
 // Single router that handles all `cat:<type>:<action>:<param...>` callbacks
 async function catalogRouter(ctx) {
   try {
-    await ctx.answerCbQuery();
-
     const parts = ctx.match.input.split(':'); // cat:type:action:param[:extra]
     const [, type, action, param, extra] = parts;
 
+    // NOTE: answerCbQuery() can only be called ONCE per callback query — a
+    // second call silently fails (Telegram rejects it). "list"/"item" just
+    // need a plain ack, but "buy" needs to answer with its own alert popup
+    // (insufficient balance / success message), so we must NOT pre-answer
+    // here for "buy" — that was swallowing the real popup and made the
+    // button look broken.
     if (action === 'list') {
+      await ctx.answerCbQuery();
       return showListHandler(type, Number(param), ctx);
     }
 
     if (action === 'item') {
+      await ctx.answerCbQuery();
       return showDetailHandler(type, Number(param), Number(extra), ctx);
     }
 
