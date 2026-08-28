@@ -36,7 +36,6 @@ function productsMenuKeyboard() {
 }
 
 async function productsMenuHandler(ctx) {
-  await ctx.answerCbQuery();
   const caption = `📦 <b>Manage Products</b>\n\nAdd new items or view/edit/delete existing ones.`;
   await sendOrEditUI(ctx, { photo: ADMIN_PHOTO, caption, keyboard: productsMenuKeyboard() });
 }
@@ -213,7 +212,6 @@ async function cleanupFilePreview(ctx, state) {
 }
 
 async function confirmAddProduct(ctx) {
-  await ctx.answerCbQuery();
   const state = getState(ctx.from.id);
   if (!state || state.step !== 'admin_add_product_confirm') {
     return ctx.answerCbQuery('⚠️ Nothing to confirm.', { show_alert: true });
@@ -227,6 +225,7 @@ async function confirmAddProduct(ctx) {
 
   if (error) {
     console.error('Add product error:', error.message);
+    await ctx.answerCbQuery('⚠️ Could not save product.', { show_alert: true });
     await sendOrEditUI(ctx, {
       photo: ADMIN_PHOTO,
       caption: `⚠️ Could not save product: ${error.message}`,
@@ -274,7 +273,6 @@ async function cancelAddProduct(ctx) {
 
 // ---- List products (admin view) ----
 async function listProductsHandler(type, page, ctx) {
-  await ctx.answerCbQuery();
   const { items, totalPages } = await fetchCatalogPage(type, page);
 
   let caption = `📋 <b>${type === 'bot' ? 'Bots' : 'APIs'} — Page ${page} of ${totalPages}</b>\n\n`;
@@ -298,7 +296,6 @@ async function listProductsHandler(type, page, ctx) {
 }
 
 async function viewProductHandler(type, code, ctx) {
-  await ctx.answerCbQuery();
   const { data: item, error } = await supabase
     .from('products')
     .select('*')
@@ -307,7 +304,10 @@ async function viewProductHandler(type, code, ctx) {
     .single();
 
   if (error || !item) {
-    return ctx.answerCbQuery('⚠️ Item not found.', { show_alert: true });
+    // Only valid when this IS a fresh callback query (see call sites below) —
+    // guarded so this never throws when called after a text/document edit.
+    if (ctx.callbackQuery) return ctx.answerCbQuery('⚠️ Item not found.', { show_alert: true });
+    return;
   }
 
   const caption =
@@ -447,7 +447,6 @@ async function confirmDeleteHandler(type, code, ctx) {
 }
 
 async function deleteProductHandler(type, code, ctx) {
-  await ctx.answerCbQuery();
   const { error } = await supabase.from('products').delete().eq('type', type).eq('code', code);
 
   if (error) {

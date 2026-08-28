@@ -144,7 +144,7 @@ bot.action('menu_buy_api', async (ctx) => {
   return showListHandler('api', 1, ctx);
 });
 
-bot.action(/^cat:(bot|api):(list|item|buy):(.+)$/, catalogRouter);
+bot.action(/^cat:(bot|api):(list|item|buy|filter|setsort):(.+)$/, catalogRouter);
 
 // ---------------- Admin-side ----------------
 
@@ -156,17 +156,22 @@ bot.action('admin:close', requireAdmin, closePanelHandler);
 bot.action('admin:stats', requireAdmin, statsHandler);
 
 // Products
-bot.action('admin:products:menu', requireAdmin, productsMenuHandler);
+bot.action('admin:products:menu', requireAdmin, async (ctx) => {
+  await ctx.answerCbQuery();
+  return productsMenuHandler(ctx);
+});
 bot.action('admin:products:add:bot', requireAdmin, (ctx) => startAddProduct('bot', ctx));
 bot.action('admin:products:add:api', requireAdmin, (ctx) => startAddProduct('api', ctx));
 bot.action('admin:products:add:confirm', requireAdmin, confirmAddProduct);
 bot.action('admin:products:add:cancel', requireAdmin, cancelAddProduct);
-bot.action(/^admin:products:list:(bot|api):(\d+)$/, requireAdmin, (ctx) =>
-  listProductsHandler(ctx.match[1], Number(ctx.match[2]), ctx)
-);
-bot.action(/^admin:products:view:(bot|api):(\d+)$/, requireAdmin, (ctx) =>
-  viewProductHandler(ctx.match[1], Number(ctx.match[2]), ctx)
-);
+bot.action(/^admin:products:list:(bot|api):(\d+)$/, requireAdmin, async (ctx) => {
+  await ctx.answerCbQuery();
+  return listProductsHandler(ctx.match[1], Number(ctx.match[2]), ctx);
+});
+bot.action(/^admin:products:view:(bot|api):(\d+)$/, requireAdmin, async (ctx) => {
+  await ctx.answerCbQuery();
+  return viewProductHandler(ctx.match[1], Number(ctx.match[2]), ctx);
+});
 bot.action(/^admin:products:editprice:(bot|api):(\d+)$/, requireAdmin, (ctx) =>
   startEditField('price', ctx.match[1], Number(ctx.match[2]), ctx)
 );
@@ -195,7 +200,10 @@ bot.action('admin:broadcast:confirm', requireAdmin, confirmBroadcast);
 bot.action('admin:broadcast:cancel', requireAdmin, cancelBroadcast);
 
 // Manage Admins (owner only, enforced inside handlers)
-bot.action('admin:admins:menu', requireAdmin, adminsMenuHandler);
+bot.action('admin:admins:menu', requireAdmin, async (ctx) => {
+  await ctx.answerCbQuery();
+  return adminsMenuHandler(ctx);
+});
 bot.action('admin:admins:add', requireAdmin, startAddAdmin);
 bot.action(/^admin:admins:confirmremove:(\d+)$/, requireAdmin, (ctx) => confirmRemoveAdminHandler(ctx.match[1], ctx));
 bot.action(/^admin:admins:remove:(\d+)$/, requireAdmin, (ctx) => removeAdminHandler(ctx.match[1], ctx));

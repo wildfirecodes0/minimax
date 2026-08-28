@@ -15,16 +15,21 @@ const TYPE_LABEL = { bot: 'Bot', api: 'API' };
 
 // ---------- Data helpers ----------
 
-async function fetchCatalogPage(type, page) {
+async function fetchCatalogPage(type, page, sort = 'default') {
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  const { data: items, error, count } = await supabase
-    .from('products')
-    .select('*', { count: 'exact' })
-    .eq('type', type)
-    .order('code', { ascending: true })
-    .range(from, to);
+  let query = supabase.from('products').select('*', { count: 'exact' }).eq('type', type);
+
+  if (sort === 'price_desc') {
+    query = query.order('price', { ascending: false });
+  } else if (sort === 'price_asc') {
+    query = query.order('price', { ascending: true });
+  } else {
+    query = query.order('code', { ascending: true }); // "default" — original catalog order
+  }
+
+  const { data: items, error, count } = await query.range(from, to);
 
   if (error) console.error('Catalog fetch error:', error.message);
 
@@ -58,7 +63,13 @@ function formatPriceLine(item) {
   return `<b>${item.price}</b> RP💎`;
 }
 
-function buildListCaption(type, items, page, totalPages) {
+const SORT_LABELS = {
+  default: '📋 Default',
+  price_desc: '⬇️ High To Low',
+  price_asc: '⬆️ Low To High',
+};
+
+function buildListCaption(type, items, page, totalPages, sort = 'default') {
   const label = TYPE_LABEL[type];
   let caption = `🛍️ <b>Select a ${label} From The List Below</b>\n`;
   caption += `━━━━━━━━━━━━━━━━━━\n\n`;
@@ -74,11 +85,11 @@ function buildListCaption(type, items, page, totalPages) {
   }
 
   caption += `\n📌 <b>Choose a code below to view full details:</b>`;
-  caption += `\n<i>Page ${page} of ${totalPages}</i>`;
+  caption += `\n<i>Page ${page} of ${totalPages} · Sort: ${SORT_LABELS[sort] || SORT_LABELS.default}</i>`;
   return caption;
 }
 
-function buildListKeyboard(type, items, page, totalPages) {
+function buildListKeyboard(type, items, page, totalPages, sort = 'default') {
   const rows = [];
 
   // Number buttons, 5 per row
@@ -86,20 +97,32 @@ function buildListKeyboard(type, items, page, totalPages) {
     const rowItems = items.slice(i, i + 5);
     rows.push(
       rowItems.map((item) =>
-        Markup.button.callback(`«${String(item.code).padStart(2, '0')}»`, `cat:${type}:item:${item.code}:${page}`)
+        Markup.button.callback(`«${String(item.code).padStart(2, '0')}»`, `cat:${type}:item:${item.code}:${page}:${sort}`)
       )
     );
   }
 
-  // Navigation row: Previous | Filter | Next (Previous/Next only show when applicable)
+  // Navigation row: Previous | Filter | Next (Previous/Next only show when
+  // applicable; Filter always shows)
   const navRow = [];
-  if (page > 1) navRow.push(Markup.button.callback('◀️ Previous', `cat:${type}:list:${page - 1}`));
-  if (page < totalPages) navRow.push(Markup.button.callback('Next ▶️', `cat:${type}:list:${page + 1}`));
-  if (navRow.length) rows.push(navRow);
+  if (page > 1) navRow.push(Markup.button.callback('◀️ Previous', `cat:${type}:list:${page - 1}:${sort}`));
+  navRow.push(Markup.button.callback('🎞 Filter', `cat:${type}:filter:${page}:${sort}`));
+  if (page < totalPages) navRow.push(Markup.button.callback('Next ▶️', `cat:${type}:list:${page + 1}:${sort}`));
+  rows.push(navRow);
 
   rows.push([Markup.button.callback('🔙 Return To Menu', 'menu_main')]);
 
   return Markup.inlineKeyboard(rows);
+}
+
+function buildFilterKeyboard(type, page, sort) {
+  const mark = (key) => (sort === key ? '✅ ' : '');
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`${mark('default')}📋 Default`, `cat:${type}:setsort:default`)],
+    [Markup.button.callback(`${mark('price_desc')}⬇️ High To Low`, `cat:${type}:setsort:price_desc`)],
+    [Markup.button.callback(`${mark('price_asc')}⬆️ Low To High`, `cat:${type}:setsort:price_asc`)],
+    [Markup.button.callback('🔙 Back', `cat:${type}:list:${page}:${sort}`)],
+  ]);
 }
 
 function buildDetailCaption(item) {
@@ -112,26 +135,35 @@ function buildDetailCaption(item) {
   return caption;
 }
 
-function buildDetailKeyboard(type, code, page) {
+function buildDetailKeyboard(type, code, page, sort = 'default') {
   return Markup.inlineKeyboard([
     [
       Markup.button.callback('✅ Buy Now', `cat:${type}:buy:${code}`),
-      Markup.button.callback('🔙 Return', `cat:${type}:list:${page}`),
+      Markup.button.callback('🔙 Return', `cat:${type}:list:${page}:${sort}`),
     ],
   ]);
 }
 
 // ---------- Handlers ----------
 
-async function showListHandler(type, page, ctx) {
-  const { items, totalPages } = await fetchCatalogPage(type, page);
-  const caption = buildListCaption(type, items, page, totalPages);
-  const keyboard = buildListKeyboard(type, items, page, totalPages);
+async function showListHandler(type, page, ctx, sort = 'default') {
+  const { items, totalPages } = await fetchCatalogPage(type, page, sort);
+  const caption = buildListCaption(type, items, page, totalPages, sort);
+  const keyboard = buildListKeyboard(type, items, page, totalPages, sort);
 
   await sendOrEditUI(ctx, { photo: CATALOG_PHOTOS[type], caption, keyboard });
 }
 
-async function showDetailHandler(type, code, page, ctx) {
+async function showFilterHandler(type, page, sort, ctx) {
+  const caption =
+    `🎞 <b>Filter ${TYPE_LABEL[type]}s</b>\n\n` +
+    `Choose how you'd like to sort the list:`;
+  const keyboard = buildFilterKeyboard(type, page, sort);
+
+  await sendOrEditUI(ctx, { photo: CATALOG_PHOTOS[type], caption, keyboard });
+}
+
+async function showDetailHandler(type, code, page, ctx, sort = 'default') {
   const item = await fetchProduct(type, code);
 
   if (!item) {
@@ -139,7 +171,7 @@ async function showDetailHandler(type, code, page, ctx) {
   }
 
   const caption = buildDetailCaption(item);
-  const keyboard = buildDetailKeyboard(type, code, page);
+  const keyboard = buildDetailKeyboard(type, code, page, sort);
 
   await sendOrEditUI(ctx, { photo: CATALOG_PHOTOS[type], caption, keyboard });
 }
@@ -147,23 +179,33 @@ async function showDetailHandler(type, code, page, ctx) {
 // Single router that handles all `cat:<type>:<action>:<param...>` callbacks
 async function catalogRouter(ctx) {
   try {
-    const parts = ctx.match.input.split(':'); // cat:type:action:param[:extra]
-    const [, type, action, param, extra] = parts;
+    const parts = ctx.match.input.split(':'); // cat:type:action:param[:extra][:extra2]
+    const [, type, action, param, extra, extra2] = parts;
 
     // NOTE: answerCbQuery() can only be called ONCE per callback query — a
-    // second call silently fails (Telegram rejects it). "list"/"item" just
-    // need a plain ack, but "buy" needs to answer with its own alert popup
-    // (insufficient balance / success message), so we must NOT pre-answer
-    // here for "buy" — that was swallowing the real popup and made the
-    // button look broken.
+    // second call silently fails (Telegram rejects it). "list"/"item"/
+    // "filter"/"setsort" just need a plain ack, but "buy" needs to answer
+    // with its own alert popup (insufficient balance / success message), so
+    // we must NOT pre-answer here for "buy" — that was swallowing the real
+    // popup and made the button look broken.
     if (action === 'list') {
       await ctx.answerCbQuery();
-      return showListHandler(type, Number(param), ctx);
+      return showListHandler(type, Number(param), ctx, extra || 'default');
     }
 
     if (action === 'item') {
       await ctx.answerCbQuery();
-      return showDetailHandler(type, Number(param), Number(extra), ctx);
+      return showDetailHandler(type, Number(param), Number(extra), ctx, extra2 || 'default');
+    }
+
+    if (action === 'filter') {
+      await ctx.answerCbQuery();
+      return showFilterHandler(type, Number(param), extra || 'default', ctx);
+    }
+
+    if (action === 'setsort') {
+      await ctx.answerCbQuery();
+      return showListHandler(type, 1, ctx, param || 'default');
     }
 
     if (action === 'buy') {
@@ -292,4 +334,4 @@ async function catalogRouter(ctx) {
   }
 }
 
-module.exports = { showListHandler, catalogRouter, fetchCatalogPage, fetchProduct, formatPriceLine };
+module.exports = { showListHandler, showFilterHandler, catalogRouter, fetchCatalogPage, fetchProduct, formatPriceLine };

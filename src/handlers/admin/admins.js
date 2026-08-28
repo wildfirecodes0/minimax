@@ -7,11 +7,10 @@ const { getAdminRole, isOwner } = require('../../utils/isAdmin');
 const ADMIN_PHOTO = './src/assets/adminpanel.png';
 
 async function adminsMenuHandler(ctx) {
-  if (ctx.callbackQuery) await ctx.answerCbQuery();
-
   // Owner-only screen — re-verify live every time, don't trust cached state
   if (!(await isOwner(ctx.from.id))) {
-    return ctx.answerCbQuery('🚫 Owner only.', { show_alert: true });
+    if (ctx.callbackQuery) return ctx.answerCbQuery('🚫 Owner only.', { show_alert: true });
+    return;
   }
 
   const { data: admins, error } = await supabase.from('admins').select('*').order('created_at', { ascending: true });
@@ -40,8 +39,6 @@ async function adminsMenuHandler(ctx) {
 }
 
 async function startAddAdmin(ctx) {
-  await ctx.answerCbQuery();
-
   // Extra layer: only the Owner can add new admins, even though this button
   // is only shown to owners in the UI — re-verified here in case the raw
   // callback is ever triggered directly.
@@ -49,6 +46,7 @@ async function startAddAdmin(ctx) {
     return ctx.answerCbQuery('🚫 Owner only.', { show_alert: true });
   }
 
+  await ctx.answerCbQuery();
   setState(ctx.from.id, 'admin_add_admin');
 
   const caption = `➕ <b>Add Admin</b>\n\nSend the <b>Telegram ID</b> of the user to make admin:`;
@@ -111,12 +109,11 @@ async function handleAddAdminText(ctx) {
 
 // ---- Remove Admin (with confirmation) ----
 async function confirmRemoveAdminHandler(telegramId, ctx) {
-  await ctx.answerCbQuery();
-
   if (!(await isOwner(ctx.from.id))) {
     return ctx.answerCbQuery('🚫 Owner only.', { show_alert: true });
   }
 
+  await ctx.answerCbQuery();
   await sendOrEditUI(ctx, {
     photo: ADMIN_PHOTO,
     caption: `⚠️ <b>Are you sure?</b>\n\nRemove admin <code>${telegramId}</code>? They will lose access to the panel immediately.`,
@@ -130,8 +127,6 @@ async function confirmRemoveAdminHandler(telegramId, ctx) {
 }
 
 async function removeAdminHandler(telegramId, ctx) {
-  await ctx.answerCbQuery();
-
   if (!(await isOwner(ctx.from.id))) {
     return ctx.answerCbQuery('🚫 Owner only.', { show_alert: true });
   }
