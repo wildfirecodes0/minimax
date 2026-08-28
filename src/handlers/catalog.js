@@ -79,10 +79,15 @@ function buildListCaption(type, items, page, totalPages, sort = 'default') {
     return caption;
   }
 
-  for (const item of items) {
-    const code = String(item.code).padStart(2, '0');
-    caption += `${code}. <i>${item.name}</i> ${formatPriceLine(item)}\n`;
-  }
+  // Numbering is always sequential (1, 2, 3...) in on-screen order — NOT the
+  // item's underlying database code. Otherwise, after sorting by price the
+  // numbers would appear scrambled (e.g. 06, 05, 07, 02...) since each
+  // item keeps its own fixed code. The actual code is still used internally
+  // for the buttons/purchase, just not shown as the display number anymore.
+  items.forEach((item, idx) => {
+    const displayNum = String((page - 1) * PAGE_SIZE + idx + 1).padStart(2, '0');
+    caption += `${displayNum}. <i>${item.name}</i> ${formatPriceLine(item)}\n`;
+  });
 
   caption += `\n📌 <b>Choose a code below to view full details:</b>`;
   caption += `\n<i>Page ${page} of ${totalPages} · Sort: ${SORT_LABELS[sort] || SORT_LABELS.default}</i>`;
@@ -92,13 +97,17 @@ function buildListCaption(type, items, page, totalPages, sort = 'default') {
 function buildListKeyboard(type, items, page, totalPages, sort = 'default') {
   const rows = [];
 
-  // Number buttons, 5 per row
+  // Number buttons, 5 per row — label shows the same sequential display
+  // number as the caption; the callback still carries the item's real code
+  // so selecting it fetches the correct product.
   for (let i = 0; i < items.length; i += 5) {
     const rowItems = items.slice(i, i + 5);
     rows.push(
-      rowItems.map((item) =>
-        Markup.button.callback(`«${String(item.code).padStart(2, '0')}»`, `cat:${type}:item:${item.code}:${page}:${sort}`)
-      )
+      rowItems.map((item, j) => {
+        const idx = i + j;
+        const displayNum = String((page - 1) * PAGE_SIZE + idx + 1).padStart(2, '0');
+        return Markup.button.callback(`«${displayNum}»`, `cat:${type}:item:${item.code}:${page}:${sort}`);
+      })
     );
   }
 
