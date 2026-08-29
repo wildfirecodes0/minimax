@@ -3,7 +3,7 @@ const supabase = require('../supabase');
 const { sendOrEditUI } = require('../utils/messageManager');
 const { setState, getState, clearState } = require('../utils/stateManager');
 const { mainMenuKeyboard, welcomeCaption, WELCOME_PHOTO } = require('../ui/mainMenu');
-const { PAYMENT_LINK, BOT_USERNAME } = require('../config');
+const { PAYMENT_LINK, BOT_USERNAME, REFERRAL_DEPOSIT_PERCENT } = require('../config');
 
 // Deposit / QR photo
 const DEPOSIT_PHOTO = 'https://i.ibb.co/PzW6bwBc/IMG-20260827-080855.png';
@@ -137,7 +137,7 @@ async function handleTransactionIdText(ctx) {
     // Fetch current user, then update balance + deposit_amount
     const { data: user, error: fetchError } = await supabase
       .from('users')
-      .select('balance, deposit_amount')
+      .select('balance, deposit_amount, referred_by')
       .eq('telegram_id', userId)
       .single();
 
@@ -181,6 +181,42 @@ async function handleTransactionIdText(ctx) {
         `💰 <b>New Balance:</b> <code>${newBalance}</code> RP💎`,
       keyboard: resultKeyboard,
     });
+
+    // Referral commission — the depositor's referrer (if any) gets a lifetime
+    // cut of every deposit their referral makes.
+    if (user.referred_by) {
+      const referralBonus = rpCredited * (REFERRAL_DEPOSIT_PERCENT / 100);
+
+      const { data: referrer, error: referrerFetchError } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('telegram_id', user.referred_by)
+        .single();
+
+      if (!referrerFetchError && referrer) {
+        const referrerNewBalance = Number(referrer.balance || 0) + referralBonus;
+
+        const { error: referrerUpdateError } = await supabase
+          .from('users')
+          .update({ balance: referrerNewBalance })
+          .eq('telegram_id', user.referred_by);
+
+        if (!referrerUpdateError) {
+          const buyerName = ctx.from.first_name || 'Your referral';
+          await ctx.telegram
+            .sendMessage(
+              user.referred_by,
+              `🎉 <b>Referral Bonus!</b>\n\n` +
+              `${buyerName} just deposited, and you earned <b>${referralBonus} RP💎</b> (${REFERRAL_DEPOSIT_PERCENT}%)!\n` +
+              `💰 New Balance: <code>${referrerNewBalance}</code> RP💎`,
+              { parse_mode: 'HTML' }
+            )
+            .catch((err) => console.error('Referral deposit notify error:', err.message));
+        } else {
+          console.error('Referral deposit bonus update error:', referrerUpdateError.message);
+        }
+      }
+    }
 
     // Auto-post to public channel
     const channelId = process.env.PUBLIC_CHANNEL_ID;

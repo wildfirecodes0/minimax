@@ -1,7 +1,7 @@
 const { Markup } = require('telegraf');
 const supabase = require('../supabase');
 const { sendOrEditUI } = require('../utils/messageManager');
-const { BOT_USERNAME } = require('../config');
+const { BOT_USERNAME, REFERRAL_PURCHASE_PERCENT } = require('../config');
 
 const PAGE_SIZE = 10;
 
@@ -226,7 +226,7 @@ async function catalogRouter(ctx) {
 
       const { data: user, error } = await supabase
         .from('users')
-        .select('balance, spend_amount')
+        .select('balance, spend_amount, referred_by')
         .eq('telegram_id', ctx.from.id)
         .single();
 
@@ -280,6 +280,42 @@ async function catalogRouter(ctx) {
         { telegram_id: ctx.from.id, type, product_code: item.code, product_name: item.name, price },
       ]);
       if (orderError) console.error('Order record error:', orderError.message);
+
+      // Referral commission — the buyer's referrer (if any) gets a lifetime
+      // cut of every purchase their referral makes.
+      if (user.referred_by) {
+        const referralBonus = price * (REFERRAL_PURCHASE_PERCENT / 100);
+
+        const { data: referrer, error: referrerFetchError } = await supabase
+          .from('users')
+          .select('balance')
+          .eq('telegram_id', user.referred_by)
+          .single();
+
+        if (!referrerFetchError && referrer) {
+          const referrerNewBalance = Number(referrer.balance || 0) + referralBonus;
+
+          const { error: referrerUpdateError } = await supabase
+            .from('users')
+            .update({ balance: referrerNewBalance })
+            .eq('telegram_id', user.referred_by);
+
+          if (!referrerUpdateError) {
+            const buyerName = ctx.from.first_name || 'Your referral';
+            await ctx.telegram
+              .sendMessage(
+                user.referred_by,
+                `🎉 <b>Referral Bonus!</b>\n\n` +
+                `${buyerName} just made a purchase, and you earned <b>${referralBonus} RP💎</b> (${REFERRAL_PURCHASE_PERCENT}%)!\n` +
+                `💰 New Balance: <code>${referrerNewBalance}</code> RP💎`,
+                { parse_mode: 'HTML' }
+              )
+              .catch((err) => console.error('Referral purchase notify error:', err.message));
+          } else {
+            console.error('Referral purchase bonus update error:', referrerUpdateError.message);
+          }
+        }
+      }
 
       await ctx.answerCbQuery('✅ Purchase successful! Sending your file now...', { show_alert: true });
 

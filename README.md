@@ -83,6 +83,14 @@ Every user must join the channel configured in `src/config.js` (`FORCE_JOIN_CHAN
 
 Users tap "🚀 Pay" (Razorpay/UPI link in `src/config.js` → `PAYMENT_LINK`), pay, then tap "🦋 Paid" and submit their Transaction ID. The bot verifies it against `rparinfo.onrender.com`'s API before crediting RP💎 — the credited amount always comes from the verified API response, never from user input, and each payment ID can only be used once (enforced at the database level to prevent double-crediting).
 
+## 🩸 Referral Program
+
+Every user gets a personal link — `https://t.me/<bot>?start=ref_<their_telegram_id>` (shown via "🩸 Invite Your Friends" in the main menu). When someone joins through it:
+
+- The **referrer** gets a one-time signup bonus (`REFERRAL_SIGNUP_BONUS` in `src/config.js`, default `0.1` RP💎)
+- Then, for life, the referrer earns `REFERRAL_DEPOSIT_PERCENT`% (default `40%`) of every deposit, and `REFERRAL_PURCHASE_PERCENT`% (default `10%`) of every purchase, that referred friend makes
+- If your database was created before this feature was added, run `src/db/migration_referrals.sql` once in Supabase (fresh setups just use the updated `schema.sql`)
+
 ## 🌐 Hosting
 
 This bot uses **long polling** (`bot.launch()`), so it needs to run continuously.

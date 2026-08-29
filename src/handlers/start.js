@@ -1,6 +1,7 @@
 const supabase = require('../supabase');
 const { sendOrEditUI } = require('../utils/messageManager');
 const { WELCOME_PHOTO, mainMenuKeyboard, welcomeCaption } = require('../ui/mainMenu');
+const { REFERRAL_SIGNUP_BONUS } = require('../config');
 
 async function startHandler(ctx) {
   const tgUser = ctx.from;
@@ -26,6 +27,23 @@ async function startHandler(ctx) {
       });
     }
 
+    // Parse a referral payload, e.g. /start ref_123456789 (from a link like
+    // https://t.me/BotUsername?start=ref_123456789). Ignore anything
+    // malformed or self-referral — referredBy stays null in those cases.
+    let referredBy = null;
+    const startPayload = ctx.startPayload; // telegraf strips the leading "/start "
+    if (startPayload && startPayload.startsWith('ref_')) {
+      const referrerId = Number(startPayload.slice(4));
+      if (Number.isInteger(referrerId) && referrerId !== tgUser.id) {
+        const { data: referrerExists } = await supabase
+          .from('users')
+          .select('telegram_id')
+          .eq('telegram_id', referrerId)
+          .single();
+        if (referrerExists) referredBy = referrerId;
+      }
+    }
+
     // New user -> insert into Supabase
     const { error: insertError } = await supabase.from('users').insert([
       {
@@ -34,6 +52,7 @@ async function startHandler(ctx) {
         first_name: tgUser.first_name || null,
         last_name: tgUser.last_name || null,
         role: 'buyer',
+        referred_by: referredBy,
       },
     ]);
 
@@ -47,6 +66,37 @@ async function startHandler(ctx) {
       caption: welcomeCaption(tgUser, true),
       keyboard: mainMenuKeyboard,
     });
+
+    // One-time referral signup bonus, credited to the referrer right away
+    if (referredBy) {
+      const { data: referrer, error: referrerFetchError } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('telegram_id', referredBy)
+        .single();
+
+      if (!referrerFetchError && referrer) {
+        const referrerNewBalance = Number(referrer.balance || 0) + REFERRAL_SIGNUP_BONUS;
+        const { error: referrerUpdateError } = await supabase
+          .from('users')
+          .update({ balance: referrerNewBalance })
+          .eq('telegram_id', referredBy);
+
+        if (!referrerUpdateError) {
+          await ctx.telegram
+            .sendMessage(
+              referredBy,
+              `🎉 <b>New Referral!</b>\n\n` +
+              `${tgUser.first_name} just joined using your referral link! You earned <b>${REFERRAL_SIGNUP_BONUS} RP💎</b>.\n` +
+              `💰 New Balance: <code>${referrerNewBalance}</code> RP💎`,
+              { parse_mode: 'HTML' }
+            )
+            .catch((err) => console.error('Referral signup notify error:', err.message));
+        } else {
+          console.error('Referral signup bonus update error:', referrerUpdateError.message);
+        }
+      }
+    }
 
     // Notify admin about new registration (HTML formatted)
     const adminChatId = process.env.ADMIN_CHAT_ID;

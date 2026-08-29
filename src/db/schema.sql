@@ -17,6 +17,7 @@ create table if not exists users (
   deposit_amount numeric default 0,          -- lifetime total deposited (RP💎)
   spend_amount numeric default 0,            -- lifetime total spent (RP💎)
   is_banned boolean default false,
+  referred_by bigint,                        -- telegram_id of the user who referred them (null if none)
   created_at timestamp with time zone default now()
 );
 
@@ -82,3 +83,4 @@ create index if not exists idx_products_type_code on products (type, code);
 create index if not exists idx_transactions_payment_id on transactions (payment_id);
 create index if not exists idx_admins_telegram_id on admins (telegram_id);
 create index if not exists idx_orders_type on orders (type);
+create index if not exists idx_users_referred_by on users (referred_by);

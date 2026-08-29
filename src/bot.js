@@ -12,6 +12,7 @@ const mainMenuHandler = require('./handlers/menu');
 const aboutUsHandler = require('./handlers/aboutUs');
 const statsHandler = require('./handlers/stats');
 const { depositHandler, depositPaidHandler, handleTransactionIdText } = require('./handlers/deposit');
+const { inviteHandler } = require('./handlers/referral');
 const { showListHandler, catalogRouter } = require('./handlers/catalog');
 
 // Admin panel
@@ -128,6 +129,7 @@ bot.start(startHandler);
 bot.action('menu_profile', profileHandler);
 bot.action('menu_main', mainMenuHandler);
 bot.action('menu_about_us', aboutUsHandler);
+bot.action('menu_invite', inviteHandler);
 
 bot.action('profile_stats', statsHandler);
 bot.action('profile_deposit', depositHandler);

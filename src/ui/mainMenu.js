@@ -10,6 +10,7 @@ const mainMenuKeyboard = Markup.inlineKeyboard([
     Markup.button.callback('✅ Buy API', 'menu_buy_api'),
     Markup.button.callback('✳️ Buy Bot', 'menu_buy_bot'),
   ],
+  [{ ...Markup.button.callback('🩸 Invite Your Friends', 'menu_invite'), style: 'success' }],
   [
     Markup.button.callback('🕸 About Us', 'menu_about_us'),
     Markup.button.url('🎫 Support', 'https://t.me/RaushanKakhaura'),
