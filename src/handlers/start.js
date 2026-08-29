@@ -7,20 +7,31 @@ const { setState, getState, clearState } = require('../utils/stateManager');
 async function startHandler(ctx) {
   const tgUser = ctx.from;
 
+  // In a callback query context (called from checkJoinHandler), ctx.chat can
+  // sometimes be null if Telegraf couldn't resolve it. Fall back to
+  // callbackQuery.message.chat so sendOrEditUI always has a valid chatId.
+  if (!ctx.chat && ctx.callbackQuery?.message?.chat) {
+    ctx.chat = ctx.callbackQuery.message.chat;
+  }
+
   try {
-    // Check if user already exists
+    // Use maybeSingle() instead of single() — maybeSingle() returns null (no error)
+    // when 0 rows are found, whereas single() throws PGRST116 which we have to
+    // special-case. maybeSingle() is simpler and safer.
     const { data: existingUser, error: fetchError } = await supabase
       .from('users')
-      .select('*')
+      .select('telegram_id')
       .eq('telegram_id', tgUser.id)
-      .single();
+      .maybeSingle();
 
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error('Fetch error:', fetchError.message);
+    if (fetchError) {
+      console.error('Fetch error in startHandler:', fetchError.message);
+      // Don't block the user — if we can't check, proceed to insert attempt
+      // The unique constraint on telegram_id will prevent duplicates.
     }
 
     if (existingUser) {
-      // Already registered — show welcome-back UI (edited, not resent)
+      // Already registered — show welcome-back UI
       return sendOrEditUI(ctx, {
         photo: WELCOME_PHOTO,
         caption: welcomeCaption(tgUser, false),
@@ -28,17 +39,12 @@ async function startHandler(ctx) {
       });
     }
 
-    // Parse a referral payload, e.g. /start ref_123456789 (from a link like
-    // https://t.me/BotUsername?start=ref_123456789). Ignore anything
-    // malformed or self-referral — referredBy stays null in those cases.
-    //
-    // IMPORTANT: ctx.startPayload is only available when the handler is called
-    // directly from bot.start() — NOT when called from check_join (callback query).
-    // So we save the payload in stateManager when /start is received, and read it
-    // back here if ctx.startPayload is unavailable (i.e. called via check_join).
+    // ── Referral payload ─────────────────────────────────────────────────────
+    // ctx.startPayload is set when called directly from bot.start().
+    // When called from checkJoinHandler (callback), we read it from stateManager
+    // where bot.js middleware saved it before the force-join gate ran.
     let startPayload = ctx.startPayload || null;
 
-    // If no startPayload in context, check stateManager (saved by forceJoin flow)
     if (!startPayload) {
       const savedState = getState(tgUser.id);
       if (savedState && savedState.step === 'pending_start' && savedState.data?.startPayload) {
@@ -46,7 +52,7 @@ async function startHandler(ctx) {
       }
     }
 
-    // Clear any pending_start state
+    // Clear pending_start state now that we've consumed it
     const currentState = getState(tgUser.id);
     if (currentState && currentState.step === 'pending_start') {
       clearState(tgUser.id);
@@ -60,12 +66,12 @@ async function startHandler(ctx) {
           .from('users')
           .select('telegram_id')
           .eq('telegram_id', referrerId)
-          .single();
+          .maybeSingle();
         if (referrerExists) referredBy = referrerId;
       }
     }
 
-    // New user -> insert into Supabase
+    // ── Insert new user ───────────────────────────────────────────────────────
     const { error: insertError } = await supabase.from('users').insert([
       {
         telegram_id: tgUser.id,
@@ -78,23 +84,35 @@ async function startHandler(ctx) {
     ]);
 
     if (insertError) {
-      console.error('Insert error:', insertError.message);
+      // Unique constraint violation = user was inserted by a concurrent request
+      // (e.g. double-click on "I've Joined"). Treat as already-registered.
+      if (insertError.code === '23505') {
+        console.log(`User ${tgUser.id} already exists (race condition) — showing welcome-back.`);
+        return sendOrEditUI(ctx, {
+          photo: WELCOME_PHOTO,
+          caption: welcomeCaption(tgUser, false),
+          keyboard: mainMenuKeyboard,
+        });
+      }
+
+      console.error('Insert error:', insertError.code, insertError.message);
       return ctx.reply('⚠️ Something went wrong while registering you. Please try again.');
     }
 
+    // ── Welcome new user ─────────────────────────────────────────────────────
     await sendOrEditUI(ctx, {
       photo: WELCOME_PHOTO,
       caption: welcomeCaption(tgUser, true),
       keyboard: mainMenuKeyboard,
     });
 
-    // One-time referral signup bonus, credited to the referrer right away
+    // ── Referral signup bonus ────────────────────────────────────────────────
     if (referredBy) {
       const { data: referrer, error: referrerFetchError } = await supabase
         .from('users')
         .select('balance')
         .eq('telegram_id', referredBy)
-        .single();
+        .maybeSingle();
 
       if (!referrerFetchError && referrer) {
         const referrerNewBalance = Number(referrer.balance || 0) + REFERRAL_SIGNUP_BONUS;
@@ -119,23 +137,25 @@ async function startHandler(ctx) {
       }
     }
 
-    // Notify admin about new registration (HTML formatted)
+    // ── Notify admin ─────────────────────────────────────────────────────────
     const adminChatId = process.env.ADMIN_CHAT_ID;
     if (adminChatId) {
       const usernameText = tgUser.username ? `@${tgUser.username}` : '<i>(no username)</i>';
-      await ctx.telegram.sendMessage(
-        adminChatId,
-        `🆕 <b>New User Registered</b>\n\n` +
-        `👤 <b>Name:</b> ${tgUser.first_name} ${tgUser.last_name || ''}\n` +
-        `🔗 <b>Username:</b> ${usernameText}\n` +
-        `🆔 <b>Telegram ID:</b> <code>${tgUser.id}</code>\n` +
-        `📅 <b>Time:</b> ${new Date().toLocaleString()}`,
-        { parse_mode: 'HTML' }
-      );
+      await ctx.telegram
+        .sendMessage(
+          adminChatId,
+          `🆕 <b>New User Registered</b>\n\n` +
+          `👤 <b>Name:</b> ${tgUser.first_name} ${tgUser.last_name || ''}\n` +
+          `🔗 <b>Username:</b> ${usernameText}\n` +
+          `🆔 <b>Telegram ID:</b> <code>${tgUser.id}</code>\n` +
+          `📅 <b>Time:</b> ${new Date().toLocaleString()}`,
+          { parse_mode: 'HTML' }
+        )
+        .catch((err) => console.error('Admin new-user notify error:', err.message));
     }
   } catch (err) {
     console.error('Start handler error:', err.message);
-    ctx.reply('⚠️ Unexpected error. Please try again later.');
+    ctx.reply('⚠️ Unexpected error. Please try again later.').catch(() => {});
   }
 }
 

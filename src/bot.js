@@ -76,21 +76,47 @@ const bot = new Telegraf(process.env.BOT_TOKEN, {
 //  5. Auto-delete user message (after handler completes)
 // ============================================================
 
-// ---------------- 1. Instant answerCbQuery ----------------
+// ---------------- 1. Instant answerCbQuery (SAFE — won't block real alerts) ----------------
 // Telegram shows a loading spinner on the button until answerCbQuery() is
-// called. Previously each handler called it individually AFTER doing DB work,
-// so the spinner stayed for 1-3s. Answering it here at middleware level
-// removes the spinner IMMEDIATELY on every button press — the user sees
-// instant feedback while the real response loads.
+// called, AND a callback query can only ever be answered ONCE. The previous
+// version answered immediately for every click, which silently broke every
+// handler that needed to show a real popup afterward (Buy Now success/
+// failure, Insufficient Balance, Access Denied, Item Not Found, etc.) —
+// their answerCbQuery() call would fail because Telegram had already
+// received an answer for that click.
+//
+// Fix: wrap ctx.answerCbQuery so only the FIRST call (whichever comes first)
+// actually reaches Telegram. Then set a short fallback timer — if the real
+// handler hasn't answered within 700ms (giving DB calls plenty of time), we
+// send a blank ack ourselves just to remove the spinner. If the handler DOES
+// answer in time (the common case), its real message/alert wins.
 bot.use(async (ctx, next) => {
-  if (ctx.callbackQuery && ctx.callbackQuery.data !== 'check_join') {
-    // Answer immediately with empty response (just removes the spinner).
-    // Individual handlers may call answerCbQuery() again with a show_alert
-    // popup (like "Insufficient Balance") — Telegram only honours the LAST
-    // call with show_alert:true, so the alert still works correctly.
-    ctx.answerCbQuery().catch(() => {}); // fire-and-forget, don't await
+  if (!ctx.callbackQuery || ctx.callbackQuery.data === 'check_join') {
+    return next();
   }
-  return next();
+
+  let answered = false;
+  const realAnswer = ctx.telegram.answerCbQuery.bind(ctx.telegram);
+  const callbackId = ctx.callbackQuery.id;
+
+  ctx.answerCbQuery = async (text, extra) => {
+    if (answered) return; // already answered — silently no-op instead of throwing
+    answered = true;
+    return realAnswer(callbackId, text, extra).catch(() => {});
+  };
+
+  const fallbackTimer = setTimeout(() => {
+    if (!answered) {
+      answered = true;
+      realAnswer(callbackId).catch(() => {});
+    }
+  }, 700);
+
+  try {
+    await next();
+  } finally {
+    clearTimeout(fallbackTimer);
+  }
 });
 
 // ---------------- 2. Save /start payload BEFORE force-join gate ----------------
