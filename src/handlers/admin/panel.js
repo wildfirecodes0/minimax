@@ -84,7 +84,6 @@ async function requireAdmin(ctx, next) {
 }
 
 async function closePanelHandler(ctx) {
-  await ctx.answerCbQuery();
   try {
     await ctx.deleteMessage();
   } catch (err) {

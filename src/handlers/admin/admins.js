@@ -2,7 +2,7 @@ const { Markup } = require('telegraf');
 const supabase = require('../../supabase');
 const { sendOrEditUI } = require('../../utils/messageManager');
 const { setState, getState, clearState } = require('../../utils/stateManager');
-const { getAdminRole, isOwner } = require('../../utils/isAdmin');
+const { getAdminRole, isOwner, invalidateAdminCache } = require('../../utils/isAdmin');
 
 const ADMIN_PHOTO = './src/assets/adminpanel.png';
 
@@ -46,7 +46,6 @@ async function startAddAdmin(ctx) {
     return ctx.answerCbQuery('🚫 Owner only.', { show_alert: true });
   }
 
-  await ctx.answerCbQuery();
   setState(ctx.from.id, 'admin_add_admin');
 
   const caption = `➕ <b>Add Admin</b>\n\nSend the <b>Telegram ID</b> of the user to make admin:`;
@@ -113,7 +112,6 @@ async function confirmRemoveAdminHandler(telegramId, ctx) {
     return ctx.answerCbQuery('🚫 Owner only.', { show_alert: true });
   }
 
-  await ctx.answerCbQuery();
   await sendOrEditUI(ctx, {
     photo: ADMIN_PHOTO,
     caption: `⚠️ <b>Are you sure?</b>\n\nRemove admin <code>${telegramId}</code>? They will lose access to the panel immediately.`,
@@ -138,6 +136,7 @@ async function removeAdminHandler(telegramId, ctx) {
     return ctx.answerCbQuery('⚠️ Failed to remove.', { show_alert: true });
   }
 
+  invalidateAdminCache(Number(telegramId));
   await ctx.answerCbQuery('🗑️ Admin removed');
   return adminsMenuHandler(ctx);
 }

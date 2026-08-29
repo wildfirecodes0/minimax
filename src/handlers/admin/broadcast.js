@@ -17,7 +17,6 @@ function confirmKeyboard() {
 }
 
 async function startBroadcast(ctx) {
-  await ctx.answerCbQuery();
   setState(ctx.from.id, 'admin_broadcast');
 
   const caption =
@@ -125,7 +124,6 @@ async function handleBroadcastMedia(ctx) {
 }
 
 async function confirmBroadcast(ctx) {
-  await ctx.answerCbQuery();
   const state = getState(ctx.from.id);
   if (!state || state.step !== 'admin_broadcast_confirm') {
     return ctx.answerCbQuery('⚠️ Nothing to send.', { show_alert: true });

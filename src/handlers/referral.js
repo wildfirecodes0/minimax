@@ -11,8 +11,6 @@ const inviteKeyboard = Markup.inlineKeyboard([
 
 async function inviteHandler(ctx) {
   try {
-    await ctx.answerCbQuery();
-
     const userId = ctx.from.id;
 
     const { count, error } = await supabase

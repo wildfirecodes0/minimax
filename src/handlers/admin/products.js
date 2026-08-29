@@ -74,8 +74,6 @@ async function assertAdminOrAbort(ctx) {
 
 // ---- Step-by-step Add Product flow ----
 async function startAddProduct(type, ctx) {
-  await ctx.answerCbQuery();
-
   const nextCode = await getNextCode(type);
   const values = { code: nextCode };
 
@@ -334,7 +332,6 @@ async function viewProductHandler(type, code, ctx) {
 
 // ---- Edit Price / Description / File ----
 async function startEditField(field, type, code, ctx) {
-  await ctx.answerCbQuery();
   setState(ctx.from.id, `admin_edit_product_${field}`, { type, code });
 
   const prompts = {
@@ -433,7 +430,6 @@ async function handleEditProductFile(ctx) {
 
 // ---- Delete (with confirmation) ----
 async function confirmDeleteHandler(type, code, ctx) {
-  await ctx.answerCbQuery();
   await sendOrEditUI(ctx, {
     photo: ADMIN_PHOTO,
     caption: `⚠️ <b>Are you sure?</b>\n\nThis will permanently delete this ${type === 'bot' ? 'Bot' : 'API'} (Code #${code}). This cannot be undone.`,

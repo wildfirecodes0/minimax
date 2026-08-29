@@ -1,5 +1,6 @@
 const { Markup } = require('telegraf');
 const supabase = require('../../supabase');
+const { invalidate } = require('../../utils/cache');
 const { sendOrEditUI } = require('../../utils/messageManager');
 const { setState, getState, clearState } = require('../../utils/stateManager');
 const { getAdminRole } = require('../../utils/isAdmin');
@@ -38,7 +39,6 @@ async function renderUserProfile(ctx, user) {
 
 // ---- Step 1: Ask for user to search ----
 async function startUserSearch(ctx) {
-  await ctx.answerCbQuery();
   setState(ctx.from.id, 'admin_search_user');
 
   const caption = `🔍 <b>Search User</b>\n\nSend the user's <b>Telegram ID</b> or <b>@username</b>:`;
@@ -79,7 +79,6 @@ async function handleUserSearchText(ctx) {
 
 // ---- Step 2: Add / Deduct balance ----
 async function startBalanceAdjust(action, telegramId, ctx) {
-  await ctx.answerCbQuery();
   setState(ctx.from.id, 'admin_adjust_balance', { action, telegramId });
 
   const label = action === 'add' ? 'Add' : 'Deduct';
@@ -166,8 +165,6 @@ async function handleAdjustBalanceText(ctx) {
 
 // ---- Ban / Unban toggle ----
 async function toggleBanHandler(telegramId, ctx) {
-  await ctx.answerCbQuery();
-
   const { data: user, error: fetchError } = await supabase
     .from('users')
     .select('is_banned')
@@ -190,6 +187,8 @@ async function toggleBanHandler(telegramId, ctx) {
     return ctx.answerCbQuery('⚠️ Failed to update.', { show_alert: true });
   }
 
+  // Invalidate cache so the next interaction reflects the new ban status immediately
+  invalidate(`ban_status:${telegramId}`);
   await renderUserProfile(ctx, updated);
 }
 

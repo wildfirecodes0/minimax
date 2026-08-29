@@ -5,6 +5,8 @@ require('dotenv').config();
 
 const supabase = require('./supabase');
 const { getAdminRole } = require('./utils/isAdmin');
+const { setState, getState } = require('./utils/stateManager');
+const { get, set, invalidate, TTL } = require('./utils/cache');
 
 const startHandler = require('./handlers/start');
 const { profileHandler } = require('./handlers/profile');
@@ -64,25 +66,56 @@ const bot = new Telegraf(process.env.BOT_TOKEN, {
   },
 });
 
-// ---------------- Auto-cleanup ----------------
-// Deletes the user's own incoming message (text, commands, etc.) right after
-// it has been fully processed — keeps the chat looking like a single clean
-// app screen instead of a scrolling log of typed inputs.
+// ============================================================
+// MIDDLEWARE ORDER — critical for speed:
+//
+//  1. answerCbQuery immediately (removes Telegram's spinner ASAP)
+//  2. Save /start payload before force-join gate
+//  3. Force-join gate   (cached — no DB/API hit on repeat clicks)
+//  4. Ban gate          (cached — no DB hit on repeat clicks)
+//  5. Auto-delete user message (after handler completes)
+// ============================================================
+
+// ---------------- 1. Instant answerCbQuery ----------------
+// Telegram shows a loading spinner on the button until answerCbQuery() is
+// called. Previously each handler called it individually AFTER doing DB work,
+// so the spinner stayed for 1-3s. Answering it here at middleware level
+// removes the spinner IMMEDIATELY on every button press — the user sees
+// instant feedback while the real response loads.
 bot.use(async (ctx, next) => {
-  await next();
-  if (ctx.chat && ctx.chat.type === 'private' && ctx.message && ctx.message.message_id) {
-    try {
-      await ctx.deleteMessage(ctx.message.message_id);
-    } catch (err) {
-      // Already deleted / too old / no permission — safe to ignore
-    }
+  if (ctx.callbackQuery && ctx.callbackQuery.data !== 'check_join') {
+    // Answer immediately with empty response (just removes the spinner).
+    // Individual handlers may call answerCbQuery() again with a show_alert
+    // popup (like "Insufficient Balance") — Telegram only honours the LAST
+    // call with show_alert:true, so the alert still works correctly.
+    ctx.answerCbQuery().catch(() => {}); // fire-and-forget, don't await
   }
+  return next();
 });
 
-// ---------------- Force-Join Gate ----------------
-// Every private-chat interaction is blocked with a "please join our channel"
-// prompt until the user is a verified member — except the "I've Joined"
-// button itself, which must always be reachable to re-check membership.
+// ---------------- 2. Save /start payload BEFORE force-join gate ----------------
+// When a new user clicks a referral link (/start ref_XXXX) but hasn't joined
+// the channel yet, the force-join gate blocks them before startHandler runs.
+// We save the payload here so it survives the gate and is available once they
+// click "I've Joined" and startHandler is called from checkJoinHandler.
+bot.use(async (ctx, next) => {
+  if (
+    ctx.chat &&
+    ctx.chat.type === 'private' &&
+    ctx.message &&
+    ctx.message.text &&
+    ctx.message.text.startsWith('/start')
+  ) {
+    const parts = ctx.message.text.split(' ');
+    const payload = parts[1] || '';
+    setState(ctx.from.id, 'pending_start', { startPayload: payload });
+  }
+  return next();
+});
+
+// ---------------- 3. Force-Join Gate (CACHED) ----------------
+// getChatMember is now cached for 3 min — so repeat clicks don't each
+// make an API call to Telegram. Only the first click per 3-min window hits the API.
 bot.use(async (ctx, next) => {
   if (!ctx.chat || ctx.chat.type !== 'private') return next();
   if (ctx.callbackQuery && ctx.callbackQuery.data === 'check_join') return next();
@@ -96,30 +129,49 @@ bot.use(async (ctx, next) => {
 
 bot.action('check_join', checkJoinHandler);
 
-// ---------------- Ban Gate ----------------
-// A banned user's Ban toggle previously only changed a database flag with no
-// real effect — this enforces it: banned users can't use the bot at all,
-// except to see why they're blocked. Admins are exempt so a banned admin
-// account (edge case) doesn't lock itself out of fixing things.
+// ---------------- 4. Ban Gate (CACHED) ----------------
+// Previously: DB query on EVERY button press (200-400ms each time).
+// Now: cached for 5 min. toggleBanHandler invalidates cache on ban/unban.
 bot.use(async (ctx, next) => {
   if (!ctx.chat || ctx.chat.type !== 'private') return next();
 
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('is_banned')
-    .eq('telegram_id', ctx.from.id)
-    .maybeSingle();
+  const userId = ctx.from.id;
+  const cacheKey = `ban_status:${userId}`;
+  let isBanned = get(cacheKey);
 
-  if (error) console.error('Ban check error:', error.message);
+  if (isBanned === undefined) {
+    // Cache miss — go to DB
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('is_banned')
+      .eq('telegram_id', userId)
+      .maybeSingle();
 
-  if (user && user.is_banned) {
-    const role = await getAdminRole(ctx.from.id);
+    if (error) console.error('Ban check error:', error.message);
+    isBanned = user ? (user.is_banned === true) : false;
+    set(cacheKey, isBanned, TTL.BAN_STATUS);
+  }
+
+  if (isBanned) {
+    const role = await getAdminRole(userId);
     if (!role) {
       return ctx.reply('🚫 You have been banned from using this bot. Contact support if you think this is a mistake.');
     }
   }
 
   return next();
+});
+
+// ---------------- 5. Auto-cleanup ----------------
+bot.use(async (ctx, next) => {
+  await next();
+  if (ctx.chat && ctx.chat.type === 'private' && ctx.message && ctx.message.message_id) {
+    try {
+      await ctx.deleteMessage(ctx.message.message_id);
+    } catch (err) {
+      // Already deleted / too old / no permission — safe to ignore
+    }
+  }
 });
 
 // ---------------- Buyer-side ----------------
@@ -138,11 +190,9 @@ bot.action('profile_orders', (ctx) => ordersHandler(1, ctx));
 bot.action(/^orders:list:(\d+)$/, (ctx) => ordersHandler(Number(ctx.match[1]), ctx));
 
 bot.action('menu_buy_bot', async (ctx) => {
-  await ctx.answerCbQuery();
   return showListHandler('bot', 1, ctx);
 });
 bot.action('menu_buy_api', async (ctx) => {
-  await ctx.answerCbQuery();
   return showListHandler('api', 1, ctx);
 });
 
@@ -152,14 +202,12 @@ bot.action(/^cat:(bot|api):(list|item|buy|filter|setsort):(.+)$/, catalogRouter)
 
 bot.command('ra_ro_by_panel', adminPanelCommand);
 
-// All admin:* callbacks go through requireAdmin first
 bot.action('admin:panel', requireAdmin, (ctx) => showPanel(ctx, ctx.state.adminRole));
 bot.action('admin:close', requireAdmin, closePanelHandler);
 bot.action('admin:stats', requireAdmin, statsHandler);
 
 // Products
 bot.action('admin:products:menu', requireAdmin, async (ctx) => {
-  await ctx.answerCbQuery();
   return productsMenuHandler(ctx);
 });
 bot.action('admin:products:add:bot', requireAdmin, (ctx) => startAddProduct('bot', ctx));
@@ -167,11 +215,9 @@ bot.action('admin:products:add:api', requireAdmin, (ctx) => startAddProduct('api
 bot.action('admin:products:add:confirm', requireAdmin, confirmAddProduct);
 bot.action('admin:products:add:cancel', requireAdmin, cancelAddProduct);
 bot.action(/^admin:products:list:(bot|api):(\d+)$/, requireAdmin, async (ctx) => {
-  await ctx.answerCbQuery();
   return listProductsHandler(ctx.match[1], Number(ctx.match[2]), ctx);
 });
 bot.action(/^admin:products:view:(bot|api):(\d+)$/, requireAdmin, async (ctx) => {
-  await ctx.answerCbQuery();
   return viewProductHandler(ctx.match[1], Number(ctx.match[2]), ctx);
 });
 bot.action(/^admin:products:editprice:(bot|api):(\d+)$/, requireAdmin, (ctx) =>
@@ -201,16 +247,15 @@ bot.action('admin:broadcast:start', requireAdmin, startBroadcast);
 bot.action('admin:broadcast:confirm', requireAdmin, confirmBroadcast);
 bot.action('admin:broadcast:cancel', requireAdmin, cancelBroadcast);
 
-// Manage Admins (owner only, enforced inside handlers)
+// Manage Admins
 bot.action('admin:admins:menu', requireAdmin, async (ctx) => {
-  await ctx.answerCbQuery();
   return adminsMenuHandler(ctx);
 });
 bot.action('admin:admins:add', requireAdmin, startAddAdmin);
 bot.action(/^admin:admins:confirmremove:(\d+)$/, requireAdmin, (ctx) => confirmRemoveAdminHandler(ctx.match[1], ctx));
 bot.action(/^admin:admins:remove:(\d+)$/, requireAdmin, (ctx) => removeAdminHandler(ctx.match[1], ctx));
 
-// ---------------- Global text router (multi-step flows) ----------------
+// ---------------- Global text router ----------------
 
 const textStateHandlers = [
   handleTransactionIdText,
@@ -229,7 +274,6 @@ bot.on('text', async (ctx, next) => {
   return next();
 });
 
-// Document uploads (used for Add Product / Edit File steps, and document broadcasts)
 bot.on('document', async (ctx, next) => {
   if (await handleAddProductFile(ctx)) return;
   if (await handleEditProductFile(ctx)) return;
@@ -237,26 +281,16 @@ bot.on('document', async (ctx, next) => {
   return next();
 });
 
-// Photo / Video / GIF uploads (used for media broadcasts)
 bot.on(['photo', 'video', 'animation'], async (ctx, next) => {
   if (await handleBroadcastMedia(ctx)) return;
   return next();
 });
 
-// Global error handler — prevents a single failed action (e.g. a network
-// hiccup while sending a photo) from crashing the entire bot process.
 bot.catch((err, ctx) => {
   console.error(`Unhandled error for update type "${ctx.updateType}":`, err.message);
 });
 
 // ---------------- Health-check HTTP server ----------------
-// This bot only talks to Telegram via long polling and normally doesn't need
-// an HTTP port at all. BUT if it's deployed on Render as a "Web Service"
-// (the only free-tier option), Render requires SOMETHING listening on
-// process.env.PORT within ~60s of deploy — otherwise it repeatedly kills the
-// instance with a port-scan timeout, which looks like "Deploy failed" even
-// though the bot code itself is fine. Binding a tiny server here fixes that
-// regardless of which Render service type is chosen.
 const PORT = process.env.PORT || 3000;
 http
   .createServer((req, res) => {

@@ -18,7 +18,6 @@ async function profileHandler(ctx) {
   const tgUser = ctx.from;
 
   try {
-    await ctx.answerCbQuery(); // acknowledge button press (removes loading spinner)
 
     const { data: user, error } = await supabase
       .from('users')

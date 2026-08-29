@@ -6,8 +6,6 @@ async function mainMenuHandler(ctx) {
   const tgUser = ctx.from;
 
   try {
-    await ctx.answerCbQuery();
-
     await sendOrEditUI(ctx, {
       photo: WELCOME_PHOTO,
       caption: welcomeCaption(tgUser, false),

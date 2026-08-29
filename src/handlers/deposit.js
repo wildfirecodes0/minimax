@@ -25,8 +25,6 @@ const depositKeyboard = Markup.inlineKeyboard([
 // ---- Step 1: Show QR + Pay screen ----
 async function depositHandler(ctx) {
   try {
-    await ctx.answerCbQuery();
-
     const caption =
       `➕ <b>Deposit RP💎 Balance</b>\n\n` +
       `Scan the QR code above or tap 🚀 Pay to complete your payment via Any UPI App.\n\n` +
@@ -43,8 +41,6 @@ async function depositPaidHandler(ctx) {
   const userId = ctx.from.id;
 
   try {
-    await ctx.answerCbQuery();
-
     const caption = `💜 <b>Send Transaction Order ID:</b>`;
 
     const messageId = await sendOrEditUI(ctx, {

@@ -86,10 +86,10 @@ function buildListCaption(type, items, page, totalPages, sort = 'default') {
   // for the buttons/purchase, just not shown as the display number anymore.
   items.forEach((item, idx) => {
     const displayNum = String((page - 1) * PAGE_SIZE + idx + 1).padStart(2, '0');
-    caption += `${displayNum}. <i>${item.name}</i> ${formatPriceLine(item)}\n`;
+    caption += `<b>${displayNum}.</b> ${item.emoji ? item.emoji + ' ' : ''}<i>${item.name}</i>  ${formatPriceLine(item)}\n\n`;
   });
 
-  caption += `\n📌 <b>Choose a code below to view full details:</b>`;
+  caption += `📌 <b>Choose a code below to view full details:</b>`;
   caption += `\n<i>Page ${page} of ${totalPages} · Sort: ${SORT_LABELS[sort] || SORT_LABELS.default}</i>`;
   return caption;
 }
@@ -198,22 +198,18 @@ async function catalogRouter(ctx) {
     // we must NOT pre-answer here for "buy" — that was swallowing the real
     // popup and made the button look broken.
     if (action === 'list') {
-      await ctx.answerCbQuery();
       return showListHandler(type, Number(param), ctx, extra || 'default');
     }
 
     if (action === 'item') {
-      await ctx.answerCbQuery();
       return showDetailHandler(type, Number(param), Number(extra), ctx, extra2 || 'default');
     }
 
     if (action === 'filter') {
-      await ctx.answerCbQuery();
       return showFilterHandler(type, Number(param), extra || 'default', ctx);
     }
 
     if (action === 'setsort') {
-      await ctx.answerCbQuery();
       return showListHandler(type, 1, ctx, param || 'default');
     }
 

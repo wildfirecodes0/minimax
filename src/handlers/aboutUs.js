@@ -11,8 +11,6 @@ const aboutUsKeyboard = Markup.inlineKeyboard([
 
 async function aboutUsHandler(ctx) {
   try {
-    await ctx.answerCbQuery();
-
     const caption =
       `🕸 <b>About Us & Information</b>\n\n` +
       `Welcome to <b>${BOT_NAME}</b> — your trusted destination for premium Telegram Bots and APIs! 🚀\n\n` +

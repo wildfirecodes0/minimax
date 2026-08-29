@@ -2,6 +2,7 @@ const supabase = require('../supabase');
 const { sendOrEditUI } = require('../utils/messageManager');
 const { WELCOME_PHOTO, mainMenuKeyboard, welcomeCaption } = require('../ui/mainMenu');
 const { REFERRAL_SIGNUP_BONUS } = require('../config');
+const { setState, getState, clearState } = require('../utils/stateManager');
 
 async function startHandler(ctx) {
   const tgUser = ctx.from;
@@ -30,8 +31,28 @@ async function startHandler(ctx) {
     // Parse a referral payload, e.g. /start ref_123456789 (from a link like
     // https://t.me/BotUsername?start=ref_123456789). Ignore anything
     // malformed or self-referral — referredBy stays null in those cases.
+    //
+    // IMPORTANT: ctx.startPayload is only available when the handler is called
+    // directly from bot.start() — NOT when called from check_join (callback query).
+    // So we save the payload in stateManager when /start is received, and read it
+    // back here if ctx.startPayload is unavailable (i.e. called via check_join).
+    let startPayload = ctx.startPayload || null;
+
+    // If no startPayload in context, check stateManager (saved by forceJoin flow)
+    if (!startPayload) {
+      const savedState = getState(tgUser.id);
+      if (savedState && savedState.step === 'pending_start' && savedState.data?.startPayload) {
+        startPayload = savedState.data.startPayload;
+      }
+    }
+
+    // Clear any pending_start state
+    const currentState = getState(tgUser.id);
+    if (currentState && currentState.step === 'pending_start') {
+      clearState(tgUser.id);
+    }
+
     let referredBy = null;
-    const startPayload = ctx.startPayload; // telegraf strips the leading "/start "
     if (startPayload && startPayload.startsWith('ref_')) {
       const referrerId = Number(startPayload.slice(4));
       if (Number.isInteger(referrerId) && referrerId !== tgUser.id) {

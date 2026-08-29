@@ -7,7 +7,6 @@ const ORDERS_PHOTO = 'https://i.ibb.co/m5vBQLZd/Chat-GPT-Image-Aug-25-2026-03-16
 const PAGE_SIZE = 10;
 
 async function ordersHandler(page, ctx) {
-  await ctx.answerCbQuery();
   const telegramId = ctx.from.id;
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
