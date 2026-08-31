@@ -58,8 +58,7 @@ async function startCustomStarsAmount(ctx) {
   const userId = ctx.from.id;
   try {
     const caption =
-      `⭐ <b>Enter Custom Stars Amount</b>\n\n` +
-      `Type how many Telegram Stars you want to pay (minimum <code>${STARS_PER_RP}</code>):`;
+      `<i>How many <b>Telegram Stars</b> you want to pay</i>`;
 
     const messageId = await sendOrEditUI(ctx, {
       photo: DEPOSIT_PHOTO,
@@ -84,12 +83,12 @@ async function handleCustomStarsAmountText(ctx) {
   const raw = ctx.message.text.trim();
   const starsAmount = Number(raw);
 
-  if (!Number.isInteger(starsAmount) || starsAmount < STARS_PER_RP) {
+  if (!Number.isInteger(starsAmount) || starsAmount < 1) {
     await sendOrEditUI(ctx, {
       photo: DEPOSIT_PHOTO,
       caption:
         `⚠️ <b>Invalid Amount</b>\n\n` +
-        `Please enter a whole number of Stars, minimum <code>${STARS_PER_RP}</code>.`,
+        `Please enter a whole number of Stars, minimum <code>1</code>.`,
       keyboard: resultKeyboard,
     });
     return true;
@@ -102,6 +101,15 @@ async function handleCustomStarsAmountText(ctx) {
 // ---- Sends the actual Telegram Stars invoice (currency = XTR) ----
 async function sendStarsInvoice(ctx, starsAmount) {
   const rpCredited = starsAmount / STARS_PER_RP;
+
+  // Telegram's invoice card itself does NOT render HTML — title/description
+  // there are always shown as plain text. So the nicely formatted line goes
+  // as a normal chat message right before the invoice, and the invoice card
+  // gets a clean plain-text version of the same info.
+  await ctx.reply(
+    `👌 <b>Instantly credit ${formatRp(rpCredited)} RP💎 to your wallet by paying ${starsAmount} Telegram Stars.</b>`,
+    { parse_mode: 'HTML' }
+  );
 
   await ctx.replyWithInvoice({
     title: `Deposit ${formatRp(rpCredited)} RP💎`,
