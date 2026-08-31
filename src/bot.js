@@ -14,6 +14,14 @@ const mainMenuHandler = require('./handlers/menu');
 const aboutUsHandler = require('./handlers/aboutUs');
 const statsHandler = require('./handlers/stats');
 const { depositHandler, depositPaidHandler, handleTransactionIdText } = require('./handlers/deposit');
+const {
+  starsDepositHandler,
+  starsPackageHandler,
+  startCustomStarsAmount,
+  handleCustomStarsAmountText,
+  preCheckoutHandler,
+  successfulPaymentHandler,
+} = require('./handlers/starsDeposit');
 const { inviteHandler } = require('./handlers/referral');
 const { showListHandler, catalogRouter } = require('./handlers/catalog');
 
@@ -57,6 +65,16 @@ const {
 } = require('./handlers/admin/admins');
 const { ordersHandler } = require('./handlers/orders');
 const { isChannelMember, sendJoinPrompt, checkJoinHandler } = require('./handlers/forceJoin');
+
+if (!process.env.BOT_TOKEN) {
+  console.error(
+    '\n❌ BOT_TOKEN missing.\n' +
+    '   Project root mein ".env" file banao (".env.example" ko copy karke)\n' +
+    '   aur usme apna asli bot token daalo (BotFather se milega):\n\n' +
+    '   BOT_TOKEN=123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n'
+  );
+  process.exit(1);
+}
 
 const bot = new Telegraf(process.env.BOT_TOKEN, {
   telegram: {
@@ -145,6 +163,9 @@ bot.use(async (ctx, next) => {
 bot.use(async (ctx, next) => {
   if (!ctx.chat || ctx.chat.type !== 'private') return next();
   if (ctx.callbackQuery && ctx.callbackQuery.data === 'check_join') return next();
+  // NEVER gate a Stars payment confirmation — the Stars have already been
+  // charged, so this update MUST reach successfulPaymentHandler no matter what.
+  if (ctx.message && ctx.message.successful_payment) return next();
 
   const joined = await isChannelMember(ctx.telegram, ctx.from.id);
   if (!joined) {
@@ -160,6 +181,8 @@ bot.action('check_join', checkJoinHandler);
 // Now: cached for 5 min. toggleBanHandler invalidates cache on ban/unban.
 bot.use(async (ctx, next) => {
   if (!ctx.chat || ctx.chat.type !== 'private') return next();
+  // Same reasoning as the force-join gate — the Stars charge already happened.
+  if (ctx.message && ctx.message.successful_payment) return next();
 
   const userId = ctx.from.id;
   const cacheKey = `ban_status:${userId}`;
@@ -212,6 +235,13 @@ bot.action('menu_invite', inviteHandler);
 bot.action('profile_stats', statsHandler);
 bot.action('profile_deposit', depositHandler);
 bot.action('deposit_paid', depositPaidHandler);
+bot.action('deposit_stars', starsDepositHandler);
+bot.action(/^stars_pkg:(\d+)$/, (ctx) => starsPackageHandler(Number(ctx.match[1]), ctx));
+bot.action('stars_custom', startCustomStarsAmount);
+
+// Telegram Stars payment lifecycle — fully automatic, no manual verification
+bot.on('pre_checkout_query', preCheckoutHandler);
+bot.on('successful_payment', successfulPaymentHandler);
 bot.action('profile_orders', (ctx) => ordersHandler(1, ctx));
 bot.action(/^orders:list:(\d+)$/, (ctx) => ordersHandler(Number(ctx.match[1]), ctx));
 
@@ -285,6 +315,7 @@ bot.action(/^admin:admins:remove:(\d+)$/, requireAdmin, (ctx) => removeAdminHand
 
 const textStateHandlers = [
   handleTransactionIdText,
+  handleCustomStarsAmountText,
   handleAddProductText,
   handleEditProductText,
   handleUserSearchText,

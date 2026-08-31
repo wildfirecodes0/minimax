@@ -71,6 +71,16 @@ npm run seed
 npm start
 ```
 
+## ⭐ Telegram Stars Auto-Deposit
+
+Users can now deposit RP💎 instantly using **Telegram Stars** — fully automatic, no manual Transaction ID verification needed.
+
+- **Rate:** `15 Stars = 1 RP💎` (change via `STARS_PER_RP` in `src/config.js`)
+- Flow: Deposit screen → "⭐ Pay with Telegram Stars" → pick a package or enter a custom amount → Telegram's native payment sheet → balance credited the instant payment succeeds.
+- On success: the user gets a formatted confirmation, their referrer (if any) gets their usual lifetime deposit commission, and the same channel (`PUBLIC_CHANNEL_ID`) gets a "New Deposit Arrived" post — same style as the existing INR deposit announcement.
+- **Setup required:** run `src/db/migration_stars_deposit.sql` once in the Supabase SQL Editor (creates the `star_transactions` table used to prevent double-crediting).
+- No extra `.env` variable needed — Telegram Stars payments don't require a payment provider token.
+
 ## 👑 Becoming the Admin/Owner
 
 Send `/ra_ro_by_panel` to your bot from Telegram. **The first person to run this command automatically becomes the Owner.** After that, only registered admins can access the panel. The Owner can add/remove additional admins from inside the panel.

@@ -20,6 +20,7 @@ const depositKeyboard = Markup.inlineKeyboard([
     Markup.button.callback('🔙 Back', 'menu_main'),
     Markup.button.callback('🦋 Paid', 'deposit_paid'),
   ],
+  [Markup.button.callback('⭐ Pay with Telegram Stars (Instant)', 'deposit_stars')],
 ]);
 
 // ---- Step 1: Show QR + Pay screen ----
@@ -28,7 +29,8 @@ async function depositHandler(ctx) {
     const caption =
       `➕ <b>Deposit RP💎 Balance</b>\n\n` +
       `Scan the QR code above or tap 🚀 Pay to complete your payment via Any UPI App.\n\n` +
-      `Once paid, tap 🦋 Paid below and send your Transaction ID.`;
+      `Once paid, tap 🦋 Paid below and send your Transaction ID.\n\n` +
+      `⭐ <b>Prefer instant, automatic deposit?</b> Tap "Pay with Telegram Stars" below — no waiting, credited immediately.`;
 
     await sendOrEditUI(ctx, { photo: DEPOSIT_PHOTO, caption, keyboard: depositKeyboard });
   } catch (err) {
