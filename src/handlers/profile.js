@@ -11,6 +11,7 @@ const profileKeyboard = Markup.inlineKeyboard([
     Markup.button.callback('➕ Deposit', 'profile_deposit'),
   ],
   [Markup.button.callback('📜 My Orders', 'profile_orders')],
+  [Markup.button.callback('💰 Deposit History', 'profile_deposit_history')],
   [Markup.button.callback('🔙 Return To Menu', 'menu_main')],
 ]);
 

@@ -64,6 +64,7 @@ const {
   removeAdminHandler,
 } = require('./handlers/admin/admins');
 const { ordersHandler, downloadOrdersPdfHandler } = require('./handlers/orders');
+const { depositHistoryHandler, downloadDepositHistoryPdfHandler } = require('./handlers/depositHistory');
 const { isChannelMember, sendJoinPrompt, checkJoinHandler } = require('./handlers/forceJoin');
 
 if (!process.env.BOT_TOKEN) {
@@ -244,6 +245,8 @@ bot.on('pre_checkout_query', preCheckoutHandler);
 bot.on('successful_payment', successfulPaymentHandler);
 bot.action('profile_orders', ordersHandler);
 bot.action('orders:download_pdf', downloadOrdersPdfHandler);
+bot.action('profile_deposit_history', depositHistoryHandler);
+bot.action('deposits:download_pdf', downloadDepositHistoryPdfHandler);
 
 bot.action('menu_buy_bot', async (ctx) => {
   return showListHandler('bot', 1, ctx);
