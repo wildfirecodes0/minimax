@@ -28,6 +28,8 @@ async function aboutUsHandler(ctx) {
     await sendOrEditUI(ctx, { photo: ABOUT_PHOTO, caption, keyboard: aboutUsKeyboard });
   } catch (err) {
     console.error('About Us handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.reply('⚠️ Something went wrong. Please try again.').catch(() => {});
   }
 }
 

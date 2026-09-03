@@ -35,6 +35,8 @@ async function depositHandler(ctx) {
     await sendOrEditUI(ctx, { photo: DEPOSIT_PHOTO, caption, keyboard: depositKeyboard });
   } catch (err) {
     console.error('Deposit handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 
@@ -55,6 +57,8 @@ async function depositPaidHandler(ctx) {
     setState(userId, 'awaiting_transaction_id', {}, messageId);
   } catch (err) {
     console.error('Deposit paid handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 
@@ -73,7 +77,13 @@ async function handleTransactionIdText(ctx) {
   clearState(userId);
 
   try {
-    const response = await fetch(`${VERIFY_API_BASE}/${encodeURIComponent(transactionId)}`);
+    // FIX: no timeout previously meant a slow/stuck third-party API could
+    // hang this whole flow forever with zero reply to the user.
+    const verifyController = new AbortController();
+    const verifyTimer = setTimeout(() => verifyController.abort(), 12000);
+    const response = await fetch(`${VERIFY_API_BASE}/${encodeURIComponent(transactionId)}`, {
+      signal: verifyController.signal,
+    }).finally(() => clearTimeout(verifyTimer));
     const result = await response.json().catch(() => null);
 
     // Real API shape:

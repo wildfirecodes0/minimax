@@ -372,6 +372,10 @@ async function catalogRouter(ctx) {
     }
   } catch (err) {
     console.error('Catalog router error:', err.message);
+    // FIX: this was the main "bot sometimes doesn't reply" culprit — any
+    // failure here (buy, browse, filter) was swallowed with zero feedback,
+    // leaving the user staring at a stuck loading spinner forever.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 

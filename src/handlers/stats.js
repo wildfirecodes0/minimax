@@ -39,6 +39,8 @@ async function statsHandler(ctx) {
     await sendOrEditUI(ctx, { photo: STATS_PHOTO, caption, keyboard: statsKeyboard });
   } catch (err) {
     console.error('Stats handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 

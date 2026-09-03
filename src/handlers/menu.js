@@ -13,6 +13,8 @@ async function mainMenuHandler(ctx) {
     });
   } catch (err) {
     console.error('Main menu handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.reply('⚠️ Something went wrong. Please try again.').catch(() => {});
   }
 }
 

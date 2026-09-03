@@ -40,6 +40,8 @@ async function starsDepositHandler(ctx) {
     await sendOrEditUI(ctx, { photo: DEPOSIT_PHOTO, caption, keyboard: Markup.inlineKeyboard(rows) });
   } catch (err) {
     console.error('Stars deposit handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 
@@ -50,6 +52,8 @@ async function starsPackageHandler(starsAmount, ctx) {
     await sendStarsInvoice(ctx, starsAmount);
   } catch (err) {
     console.error('Stars package handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.reply('⚠️ Something went wrong. Please try again.').catch(() => {});
   }
 }
 
@@ -69,6 +73,8 @@ async function startCustomStarsAmount(ctx) {
     setState(userId, 'awaiting_stars_amount', {}, messageId);
   } catch (err) {
     console.error('Start custom stars amount error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 

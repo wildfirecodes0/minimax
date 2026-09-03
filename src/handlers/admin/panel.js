@@ -70,17 +70,26 @@ async function adminPanelCommand(ctx) {
     return showPanel(ctx, role);
   } catch (err) {
     console.error('Admin panel command error:', err.message);
+    // FIX: previously silent — admin ran the command and got nothing back.
+    ctx.reply('⚠️ Something went wrong. Please try again.').catch(() => {});
   }
 }
 
 // ---- Guard used before every admin:* callback ----
 async function requireAdmin(ctx, next) {
-  const role = await getAdminRole(ctx.from.id);
-  if (!role) {
-    return ctx.answerCbQuery('🚫 Access Denied', { show_alert: true });
+  try {
+    const role = await getAdminRole(ctx.from.id);
+    if (!role) {
+      return ctx.answerCbQuery('🚫 Access Denied', { show_alert: true });
+    }
+    ctx.state.adminRole = role;
+    return next();
+  } catch (err) {
+    // FIX: this guard runs before EVERY admin:* button. It had no try/catch
+    // at all, so any hiccup here silently killed every admin action.
+    console.error('requireAdmin error:', err.message);
+    return ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
-  ctx.state.adminRole = role;
-  return next();
 }
 
 async function closePanelHandler(ctx) {

@@ -31,6 +31,8 @@ async function inviteHandler(ctx) {
     await sendOrEditUI(ctx, { photo: INVITE_PHOTO, caption, keyboard: inviteKeyboard });
   } catch (err) {
     console.error('Invite handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 

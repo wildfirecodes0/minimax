@@ -63,7 +63,7 @@ const {
   confirmRemoveAdminHandler,
   removeAdminHandler,
 } = require('./handlers/admin/admins');
-const { ordersHandler } = require('./handlers/orders');
+const { ordersHandler, downloadOrdersPdfHandler } = require('./handlers/orders');
 const { isChannelMember, sendJoinPrompt, checkJoinHandler } = require('./handlers/forceJoin');
 
 if (!process.env.BOT_TOKEN) {
@@ -242,8 +242,8 @@ bot.action('stars_custom', startCustomStarsAmount);
 // Telegram Stars payment lifecycle — fully automatic, no manual verification
 bot.on('pre_checkout_query', preCheckoutHandler);
 bot.on('successful_payment', successfulPaymentHandler);
-bot.action('profile_orders', (ctx) => ordersHandler(1, ctx));
-bot.action(/^orders:list:(\d+)$/, (ctx) => ordersHandler(Number(ctx.match[1]), ctx));
+bot.action('profile_orders', ordersHandler);
+bot.action('orders:download_pdf', downloadOrdersPdfHandler);
 
 bot.action('menu_buy_bot', async (ctx) => {
   return showListHandler('bot', 1, ctx);
@@ -345,6 +345,15 @@ bot.on(['photo', 'video', 'animation'], async (ctx, next) => {
 
 bot.catch((err, ctx) => {
   console.error(`Unhandled error for update type "${ctx.updateType}":`, err.message);
+  // FIX: last-resort safety net — this used to only log, so any error that
+  // slipped past every handler's own try/catch (or a handler missing one
+  // entirely, like the old requireAdmin) left the user with total silence.
+  // Now every update type gets SOME visible response no matter what breaks.
+  if (ctx.callbackQuery) {
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
+  } else if (ctx.chat) {
+    ctx.reply('⚠️ Something went wrong. Please try again.').catch(() => {});
+  }
 });
 
 // ---------------- Health-check HTTP server ----------------

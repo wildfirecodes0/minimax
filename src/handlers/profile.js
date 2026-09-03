@@ -48,6 +48,8 @@ async function profileHandler(ctx) {
     await sendOrEditUI(ctx, { photo: PROFILE_PHOTO, caption, keyboard: profileKeyboard });
   } catch (err) {
     console.error('Profile handler error:', err.message);
+    // FIX: previously silent — user tapped the button and got nothing back.
+    ctx.answerCbQuery('⚠️ Something went wrong. Please try again.', { show_alert: true }).catch(() => {});
   }
 }
 
